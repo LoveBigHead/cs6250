@@ -73,7 +73,12 @@ class Switch(StpSwitch):
             the list of switch IDs connected to this switch object
         """
         super(Switch, self).__init__(idNum, topolink, neighbors)
-        # TODO: Define class members to keep track of which links are part of the spanning tree
+
+        self.rootID = idNum;
+        self.distanceToRoot = 0;
+        self.activeLinks = [];
+        self.switchThrough = self.rootID;
+
 
     def process_message(self, message: Message):
         """
@@ -83,8 +88,20 @@ class Switch(StpSwitch):
         message: Message
             the Message received from other Switches
         """
-        # TODO: This function needs to accept an incoming message and process it accordingly.
-        #      This function is called every time the switch receives a new message.
+        # print("Before processing");
+        # self.__printState();
+        # self.__printMsg(message);
+
+        if message.root > self.rootID:
+            return
+        elif message.root == self.rootID:
+            self.__equalRootHandler(message);
+        else:
+            self.__defaultHandler(message);
+
+        # print("After processing");
+        # self.__printState();
+        # print("===================================");
 
     def generate_logstring(self):
         """
@@ -93,17 +110,53 @@ class Switch(StpSwitch):
         returns a String of format:
             SwitchID - ActiveLink1, SwitchID - ActiveLink2, etc.
         """
-        # TODO: This function needs to return a logstring for this particular switch.  The
-        #      string represents the active forwarding links for this switch and is invoked
-        #      only after the simulation is complete.  Output the links included in the
-        #      spanning tree by INCREASING destination switch ID on a single line.
-        #
-        #      Print links as '(source switch id) - (destination switch id)', separating links
-        #      with a comma - ','.
-        #
-        #      For example, given a spanning tree (1 ----- 2 ----- 3), a correct output string
-        #      for switch 2 would have the following text:
-        #      2 - 1, 2 - 3
-        #
-        #      A full example of a valid output file is included (Logs/) in the project skeleton.
-        return "# - #, # - #, # - #"
+        activeLinksStrs = [];
+        self.activeLinks.sort();
+
+        for activeLink in self.activeLinks:
+            activeLinksStrs.append("{0} - {1}".format(self.switchID, activeLink));
+             
+        return ", ".join(activeLinksStrs);
+
+    def __equalRootHandler(self, message: Message):
+        newDistanceToRoot = message.distance + 1;
+
+        if newDistanceToRoot <  self.distanceToRoot:
+            self.distanceToRoot = newDistanceToRoot;
+            self.__updateSwitchThrough(message.origin);
+            self.__sendMsgToNeighbors();
+        elif newDistanceToRoot == self.distanceToRoot:
+            if message.origin < self.switchThrough:
+                self.__updateSwitchThrough(message.origin);
+                self.__sendMsgToNeighbors();
+        else:
+            if message.pathThrough:
+                self.activeLinks.append(message.origin);
+            elif message.origin in self.activeLinks:
+                self.activeLinks.remove(message.origin);
+
+    def __defaultHandler(self, message: Message):
+        self.rootID = message.root;
+        self.distanceToRoot = message.distance + 1;
+        self.__updateSwitchThrough(message.origin);
+
+        self.__sendMsgToNeighbors();
+
+    def __sendMsgToNeighbors(self):
+        for neighbor in self.links:
+            msg = Message(self.rootID, self.distanceToRoot, self.switchID, neighbor, neighbor == self.switchThrough);
+            self.send_message(msg);
+
+    def __updateSwitchThrough(self, newSwitchThrough):
+        self.activeLinks.clear();
+        self.switchThrough = newSwitchThrough;
+        self.activeLinks.append(self.switchThrough);
+
+    # def __printMsg(self, msg: Message):
+    #     print("origin: {0}, destination: {1}, root: {2}, distance: {3}, pathThrough: {4}".format(msg.origin, msg.destination, msg.root, msg.distance, msg.pathThrough));
+
+    # def __printState(self):
+    #     print("id: {0}, root: {1}, distance: {2}, switchthrough: {3}".format(self.switchID, self.rootID, self.distanceToRoot, self.switchThrough));
+    #     print(self.activeLinks);
+    #     print("*****************");
+
